@@ -31,9 +31,11 @@ from azure.ai.projects import AIProjectClient
 try:
     from .config import settings
     from .brreg_client import search_companies, get_company, get_subunits, search_by_industry
+    from .web_search import search_company_website, search_third_party_sources, fetch_page_summary
 except ImportError:
     from config import settings  # type: ignore
     from brreg_client import search_companies, get_company, get_subunits, search_by_industry  # type: ignore
+    from web_search import search_company_website, search_third_party_sources, fetch_page_summary  # type: ignore
 
 log = logging.getLogger(__name__)
 
@@ -131,6 +133,60 @@ TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_company_website",
+            "description": "Søk etter relevant informasjon på bedriftens egne nettsider. Finner årsrapporter, strategidokumenter, nyheter, 'om oss', investor-info og lignende. Bruk dette for å finne primærkilder direkte fra bedriften.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_name": {"type": "string", "description": "Bedriftens navn"},
+                    "website": {"type": "string", "description": "Bedriftens hjemmeside/domene (f.eks. 'equinor.com'). Bruk hjemmesiden fra get_company hvis tilgjengelig."},
+                    "topics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Spesifikke emner å søke etter, f.eks. ['årsrapport', 'bærekraft', 'strategi']. Standard: årsrapport, strategi, om oss, investor.",
+                    },
+                },
+                "required": ["company_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_third_party_sources",
+            "description": "Søk etter omtale av bedriften i troverdige tredjepartskilder (nyhetsmedier, fagpresse, offentlige instanser). Finner nyheter, analyser og omtaler som er relevante for en samarbeidspartner. Returnerer kildetype og dato der tilgjengelig.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company_name": {"type": "string", "description": "Bedriftens navn"},
+                    "topics": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Spesifikke emner, f.eks. ['kontrakt', 'oppkjøp', 'bærekraft']. Standard: samarbeid, resultat, strategi.",
+                    },
+                },
+                "required": ["company_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "fetch_page_summary",
+            "description": "Hent og les innholdet fra en spesifikk nettside-URL. Bruk dette for å lese detaljer fra en side du har funnet via søk.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "Full URL til nettsiden som skal leses"},
+                    "max_chars": {"type": "integer", "description": "Maks antall tegn å hente (standard: 2000)"},
+                },
+                "required": ["url"],
+            },
+        },
+    },
 ]
 
 
@@ -220,6 +276,20 @@ def _dispatch(name: str, args: dict) -> str:
             "beskrivelse": "Åpne denne lenken for å se regnskap, kredittscore, roller og mer på Proff.no",
         }, ensure_ascii=False)
 
+    elif name == "search_company_website":
+        results = search_company_website(**args)
+        return json.dumps(results, ensure_ascii=False)
+
+    elif name == "search_third_party_sources":
+        results = search_third_party_sources(**args)
+        return json.dumps(results, ensure_ascii=False)
+
+    elif name == "fetch_page_summary":
+        text = fetch_page_summary(**args)
+        if text:
+            return json.dumps({"content": text}, ensure_ascii=False)
+        return json.dumps({"error": "Kunne ikke hente innhold fra siden"})
+
     else:
         return json.dumps({"error": f"Ukjent verktøy: {name}"})
 
@@ -253,32 +323,58 @@ def get_client() -> AIProjectClient:
 
 SYSTEM_PROMPT = """
 Du er ProffAgenten – en ekspert på norske bedrifter og selskapsdata.
+Du hjelper brukere med å bygge et helhetlig bilde av en bedrift, slik en potensiell
+samarbeidspartner ville ønske å forstå den.
 
-Du hjelper brukere med å finne informasjon om norske bedrifter ved å søke i
-Brønnøysundregistrene (det offisielle norske foretaksregisteret).
+DINE DATAKILDER (bruk i denne rekkefølgen):
+1. Brønnøysundregistrene – offisielle registerdata (org.nr, adresse, bransje, ansatte, kapital)
+2. Bedriftens egne nettsider – årsrapport, strategi, nyheter, investor-info
+3. Troverdige tredjepartskilder – nyhetsmedier, fagpresse, offentlige instanser
 
-Dine oppgaver:
-- Søke etter bedrifter basert på navn
-- Hente detaljert informasjon om bedrifter (adresse, bransje, ansatte, kapital, formål)
-- Finne underenheter/avdelinger
-- Søke etter bedrifter innen en bestemt bransje (NACE-kode)
-- Gi lenker til Proff.no for utvidet informasjon (regnskap, kredittscore, roller)
+ARBEIDSMÅTE:
+Når brukeren spør om en bedrift, gjør du følgende:
+1. Slå opp bedriften i Brønnøysundregistrene (search_companies / get_company)
+2. Søk på bedriftens egne nettsider etter nøkkelinfo (search_company_website)
+   - Bruk hjemmesiden fra registerdata som website-parameter
+   - Se spesielt etter: årsrapport, strategidokumenter, bærekraftsrapport, nyhetsrom
+3. Søk i troverdige tredjepartskilder (search_third_party_sources)
+   - Finn omtaler relevante for en samarbeidspartner
+   - Fokus på: kontrakter, partnerskap, finansielle resultater, strategiske satsinger
+4. Om nødvendig, les detaljer fra spesifikke sider (fetch_page_summary)
 
-VIKTIG:
+PRESENTASJON AV RESULTATER:
+- Start med grunnleggende registerdata (fakta)
+- Deretter relevant info fra bedriftens egne sider (primærkilde)
+- Til slutt tredjepartsomtaler med:
+  • Kildetype (f.eks. "Nyhetsmedium (Dagens Næringsliv)", "Offentlig kilde")
+  • Dato for omtalen (hvis tilgjengelig)
+  • Kort sammendrag av hva som omtales
+- Gi alltid Proff.no-lenke for utvidet info (regnskap, kredittscore, roller)
+
+PERSPEKTIV:
+Tenk som en rådgiver for en samarbeidspartner. Fokuser på informasjon som er
+relevant for å vurdere bedriften som partner:
+- Økonomisk soliditet og vekst
+- Strategisk retning og satsingsområder
+- Omdømme og nyhetsbildet
+- Partnerskap og samarbeidshistorikk
+- Bærekraft og ESG-profil
+- Eventuelle røde flagg (konkurs, tvangsavvikling, negativ medieomtale)
+
+VIKTIGE REGLER:
 - Bruk ALLTID verktøyene dine for å hente data. Ikke gjett eller dikt opp informasjon.
-- Presenter data oversiktlig med relevant kontekst.
-- Når du finner en bedrift, inkluder alltid organisasjonsnummer.
-- Nevn Proff.no-lenke når brukeren kan ha nytte av utvidet info (regnskap etc.).
-- Hvis brukeren spør om regnskap, kredittscore eller roller – forklar at denne
-  informasjonen finnes på Proff.no og gi lenken.
+- Når du siterer tredjepartskilder, oppgi ALLTID kildetype og dato.
+- Skil tydelig mellom fakta fra registeret, info fra bedriften selv, og tredjepartsomtaler.
+- Inkluder alltid organisasjonsnummer.
+- Nevn Proff.no-lenke for utvidet regnskap/kredittinfo.
 
-Vanlige NACE-koder du kan bruke for bransjesøk:
+Vanlige NACE-koder for bransjesøk:
 - 62.010: Programmeringstjenester
-- 62.020: Konsulentvirksomhet tilknyttet informasjonsteknologi
-- 56.101: Drift av restauranter og kafeer
+- 62.020: IT-konsulentvirksomhet
+- 56.101: Restauranter og kafeer
 - 41.200: Oppføring av bygninger
 - 47.110: Butikkhandel med bredt vareutvalg
-- 86.101: Alminnelige somatiske sykehus
+- 86.101: Sykehus
 - 85.421: Universiteter
 
 Svar alltid på norsk med mindre brukeren ber om noe annet.
