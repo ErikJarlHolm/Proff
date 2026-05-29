@@ -60,7 +60,8 @@ WORD_TOOL_DEFINITION = {
     "description": (
         "Skriv den ferdige bedriftsvurderingen til en Word-fil basert på mal. "
         "Kall dette verktøyet AUTOMATISK etter at du har samlet inn all informasjon "
-        "og formulert vurderingen. Fyll inn alle seksjoner."
+        "og formulert vurderingen. Bruk KUN de definerte parameterne nedenfor – "
+        "ikke legg til ekstra felter."
     ),
     "parameters": {
         "type": "object",
@@ -224,7 +225,7 @@ def write_report_to_word(
     doc = Document(str(template))
 
     # ── Tabellfelter ────────────────────────────────────────────────────────
-    _set_table_cell_text(doc, 0, 0, 0, "Oppsummering av ", f"Bedrift: {company_name}")
+    _set_table_cell_text(doc, 0, 0, 0, "Oppsummering av Bedrift:", f" {company_name}")
     _set_table_cell_text(doc, 1, 0, 0, "Dato:", f" {today}")
 
     # AI oppsummering (tabell 3)
