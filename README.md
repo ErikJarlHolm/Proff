@@ -1,63 +1,85 @@
-# ProffAgenten 🇳🇴
+# ProffAgenten 🏢
 
-En agent for å hente bedriftsinformasjon fra norske registre.
+En Azure AI Foundry-agent som henter bedriftsinformasjon fra norske registre.
 
 ## Datakilde
 
-Bruker **Brønnøysundregistrene** (brreg.no) sitt åpne API – gratis, ingen autentisering nødvendig.
-Gir lenker til **Proff.no** for ytterligere detaljer (regnskap, kredittscore, roller).
+Bruker **Brønnøysundregistrene** (brreg.no) sitt åpne API – gratis, ingen autentisering.
+Gir lenker til **Proff.no** for utvidet informasjon (regnskap, kredittscore, roller).
 
-## Installasjon
+## Oppsett
+
+### 1. Installer
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
-## Bruk
+### 2. Konfigurer
 
-### Interaktiv modus
 ```bash
-python proff_agent.py
+cp .env.example .env
+# Fyll inn PROJECT_ENDPOINT i .env
 ```
 
-### Kommandolinje
+### 3. Logg inn Azure
+
 ```bash
-# Søk etter bedrift
-python proff_agent.py søk Equinor
-
-# Hent detaljer med org.nr
-python proff_agent.py info 923609016
-
-# Rå JSON-data
-python proff_agent.py json 923609016
+azd auth login --scope https://ai.azure.com/.default
 ```
 
-### Kommandoer i interaktiv modus
+### 4. Registrer agenten
+
+```bash
+proff create
+```
+
+### 5. Chat
+
+```bash
+proff chat
+```
+
+## Kommandoer
 
 | Kommando | Beskrivelse |
 |----------|-------------|
-| `søk <navn>` | Søk etter bedrift basert på navn |
-| `info <org.nr>` | Vis detaljert info om en bedrift |
-| `under <org.nr>` | Vis underenheter/avdelinger |
-| `json <org.nr>` | Vis rå JSON-data fra API |
-| `hjelp` | Vis hjelpetekst |
-| `avslutt` | Avslutt programmet |
+| `proff create` | Registrer/oppdater agenten i Azure AI Foundry |
+| `proff chat` | Start interaktiv chat |
+| `proff info` | Vis konfigurasjon |
 
-## Tilgjengelig data
+## Hva agenten kan
 
-- Bedriftsnavn og organisasjonsnummer
-- Selskapsform (AS, ASA, ENK, etc.)
-- Forretnings- og postadresse
-- Bransje (NACE-koder)
-- Antall ansatte
-- Stiftelsesdato
-- Aksjekapital
-- MVA- og foretaksregisterstatus
-- Konkurs-/avviklingsstatus
-- Vedtektsfestet formål
-- Underenheter/avdelinger
+- **Søke etter bedrifter** basert på navn
+- **Hente detaljert info** om en bedrift (adresse, bransje, ansatte, kapital, formål)
+- **Finne underenheter** (avdelinger/filialer)
+- **Bransjesøk** basert på NACE-kode
+- **Generere Proff.no-lenker** for utvidet info
 
-## API-referanse
+## Eksempler
 
-- [Brønnøysundregistrene API-dokumentasjon](https://data.brreg.no/enhetsregisteret/api/docs/index.html)
-- [Proff.no](https://www.proff.no) (for utvidet info som regnskap og kreditt)
+```
+Du: Finn info om Equinor
+Du: Hvor mange ansatte har DNB?
+Du: Søk etter IT-selskaper i Oslo
+Du: Hva er formålet til org.nr 923609016?
+```
+
+## Arkitektur
+
+```
+┌─────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Bruker    │────▶│  Azure AI Foundry │────▶│  Brreg.no API   │
+│   (CLI)     │◀────│  (GPT + Tools)   │◀────│  (Åpne data)    │
+└─────────────┘     └──────────────────┘     └─────────────────┘
+                                                      │
+                                              ┌───────▼───────┐
+                                              │   Proff.no    │
+                                              │   (Lenker)    │
+                                              └───────────────┘
+```
+
+## API-referanser
+
+- [Brønnøysundregistrene API](https://data.brreg.no/enhetsregisteret/api/docs/index.html)
+- [Proff.no](https://www.proff.no) – regnskap, kreditt, roller
