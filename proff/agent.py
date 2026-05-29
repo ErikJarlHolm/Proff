@@ -293,7 +293,14 @@ def _dispatch(name: str, args: dict) -> str:
         return json.dumps({"error": "Kunne ikke hente innhold fra siden"})
 
     elif name == "write_report_to_word":
-        result = write_report_to_word(**args)
+        # Filtrer bort evt. ekstra felter som LLM-en sender utover definerte parametre
+        valid_params = {
+            "company_name", "summary", "key_facts", "financials",
+            "operations", "risk_compliance", "reputation_market",
+            "recommendations", "sources",
+        }
+        filtered_args = {k: v for k, v in args.items() if k in valid_params}
+        result = write_report_to_word(**filtered_args)
         return json.dumps(result, ensure_ascii=False)
 
     else:
