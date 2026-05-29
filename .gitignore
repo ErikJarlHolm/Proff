@@ -40,3 +40,4 @@ htmlcov/
 
 # Word-maler (lokale kopier)
 template.docx
+!proff/template.docx

@@ -25,31 +25,13 @@ from docx import Document
 log = logging.getLogger(__name__)
 
 # ── Stier ────────────────────────────────────────────────────────────────────
-TEMPLATE_FILE = Path(
-    r"C:\Users\erikholm\OneDrive - Atea\Documents\Kunder\Atea AI Norge"
-    r"\Technocamp 2026\Template Bedriftsinformasjon.docx"
-)
-# Fallback: lokal kopi ved siden av koden (OneDrive-filer kan være cloud-only)
-TEMPLATE_FILE_LOCAL = Path(__file__).parent.parent / "template.docx"
+# Malen ligger i samme mappe som denne modulen (som i CLEO-2)
+TEMPLATE_FILE = Path(__file__).parent / "template.docx"
 
 REPORTS_DIR = Path(
     r"C:\Users\erikholm\OneDrive - Atea\Documents\Kunder\Atea AI Norge"
     r"\Technocamp 2026"
 )
-
-
-def _get_template() -> Path | None:
-    """Finn malen – prøv OneDrive først, deretter lokal kopi."""
-    for candidate in [TEMPLATE_FILE, TEMPLATE_FILE_LOCAL]:
-        if candidate.exists():
-            try:
-                # Sjekk at filen faktisk er tilgjengelig (ikke cloud-only stub)
-                with open(candidate, "rb") as f:
-                    f.read(4)
-                return candidate
-            except (OSError, IOError):
-                continue
-    return None
 
 
 # ── Verktøydefinisjon for Foundry ────────────────────────────────────────────
@@ -215,9 +197,9 @@ def write_report_to_word(
         {"status": "ok", "file": "<full filsti>"} ved suksess
         {"error": "<feilmelding>"} ved feil
     """
-    template = _get_template()
-    if not template:
-        return {"error": f"Mal ikke funnet. Forventet: {TEMPLATE_FILE} eller {TEMPLATE_FILE_LOCAL}"}
+    template = TEMPLATE_FILE
+    if not template.exists():
+        return {"error": f"Mal ikke funnet. Forventet: {TEMPLATE_FILE}"}
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
